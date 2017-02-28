@@ -124,7 +124,7 @@ int main(int argc, char **argv)
 
     /* This one provides a clean way to kill the shell */
     Signal(SIGQUIT, sigquit_handler); 
-
+    
     /* Initialize the job list */
     initjobs(jobs);
 
@@ -343,13 +343,34 @@ void sigchld_handler(int sig)
 {
 	pid_t pid;
 	int status;
+	struct job_t *j;
 	while(1)
 	{
-    		pid = waitpid(-1,&status, WNOHANG);
+    	pid = waitpid(-1,&status, WNOHANG|WUNTRACED );
+		
 		if(pid<=0)
 			break;
+			j = getjobpid(jobs, pid);
+        
+        if(WIFEXITED(status)){
+            deletejob( jobs, pid);                /*Delete jobs if exited normally*/
+        }
+        
+        else if(WIFSIGNALED(status)){
+            printf("Job [%d] (%d) terminated by signal 2\n", j->jid, j->pid);
+            deletejob( jobs, pid);               /*Delete jobs that were terminated with signals*/
+        }
+	    
+	    else if(WIFSTOPPED(status)){
+            printf("Job [%d] (%d) stopped by signal 20\n", j->jid, j->pid);
+            j->state= ST;                       /*new state of stopped is ST=3 */
+        }
 	}
     return;
+
+  
+
+
 }
 
 /* 
@@ -376,6 +397,12 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
+	 /* kill that process group if there is any fg job,else if no such job then return */
+	pid_t pid = fgpid(jobs);   
+    if(pid > 0){
+        kill(-pid, SIGINT);
+    }
+
     return;
 }
 
@@ -386,6 +413,10 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
+	pid_t pid = fgpid(jobs);   
+    if(pid > 0){
+        kill(-pid, SIGTSTP);
+    }
     return;
 }
 
